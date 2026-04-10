@@ -29,11 +29,32 @@ A BAYC-inspired generative NFT collection built as a portfolio piece. Fully clie
 ## Quick start
 
 ```bash
+cp .env.example .env
+# (optionally add your keys — app works without them)
 npm install
 npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173).
+
+## Environment variables
+
+Copy `.env.example` to `.env` and fill in the keys — both are optional, the app falls back to public RPCs:
+
+| Variable | Where to get it | Required? |
+|---|---|---|
+| `VITE_ALCHEMY_KEY` | [alchemy.com](https://www.alchemy.com) → create app → copy API key | No — improves RPC reliability |
+| `VITE_WALLETCONNECT_PROJECT_ID` | [cloud.walletconnect.com](https://cloud.walletconnect.com) → new project | No — enables WalletConnect QR |
+
+**Getting a free Alchemy key (2 minutes):**
+1. Sign up at [alchemy.com](https://www.alchemy.com) (free tier is generous)
+2. Create a new app → choose Ethereum Mainnet
+3. Copy the API key and paste into `.env`
+
+**Getting a free WalletConnect project ID:**
+1. Sign up at [cloud.walletconnect.com](https://cloud.walletconnect.com)
+2. Create a project → copy the Project ID
+3. Paste into `.env` as `VITE_WALLETCONNECT_PROJECT_ID`
 
 ## Build for production
 

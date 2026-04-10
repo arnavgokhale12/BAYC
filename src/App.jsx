@@ -6,14 +6,16 @@ import Gallery from './Gallery';
 import AvatarModal from './AvatarModal';
 import MintModal from './MintModal';
 import MyCollection from './MyCollection';
+import WalletButton from './WalletButton';
+import TxToast from './TxToast';
 import { loadCollection, hydrateAvatar } from './AvatarGenerator';
 import { unmute, mute, sfxSwell } from './AudioEngine';
 
 const OWNED_KEY = 'bayc_owned';
 
 export default function App() {
-  const [collection, setCollection] = useState([]);
-  const [owned, setOwned]           = useState([]);
+  const [collection, setCollection]         = useState([]);
+  const [owned, setOwned]                   = useState([]);
   const [selectedAvatar, setSelectedAvatar] = useState(null);
   const [showMintModal, setShowMintModal]   = useState(false);
   const [audioMuted, setAudioMuted]         = useState(true);
@@ -32,7 +34,6 @@ export default function App() {
       }
     } catch {}
 
-    // Trigger swell on first user gesture
     const handleFirst = () => { sfxSwell(); };
     window.addEventListener('click',   handleFirst, { once: true });
     window.addEventListener('keydown', handleFirst, { once: true });
@@ -53,11 +54,12 @@ export default function App() {
     setOwned(prev => {
       const next = [newAvatar, ...prev].slice(0, 10);
       try {
-        const toStore = next.map(a => ({
-          id: a.id, name: a.name, traitIds: a.traitIds,
-          rarityScore: a.rarityScore, rarityTier: a.rarityTier,
-        }));
-        localStorage.setItem(OWNED_KEY, JSON.stringify(toStore));
+        localStorage.setItem(OWNED_KEY, JSON.stringify(
+          next.map(a => ({
+            id: a.id, name: a.name, traitIds: a.traitIds,
+            rarityScore: a.rarityScore, rarityTier: a.rarityTier,
+          }))
+        ));
       } catch {}
       return next;
     });
@@ -67,21 +69,21 @@ export default function App() {
 
   return (
     <div className="relative min-h-screen" style={{ background: '#0a0a0f' }}>
-      {/* Particle background */}
       <ParticleField />
 
-      {/* Main content */}
       <div className="relative" style={{ zIndex: 1 }}>
 
         {/* ── Header ── */}
         <header
-          className="px-4 sm:px-8 py-6 flex items-center justify-between gap-4"
+          className="px-4 sm:px-8 py-5 flex items-center justify-between gap-4"
           style={{ borderBottom: '1px solid rgba(255,215,0,0.1)' }}
         >
+          {/* Logo */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
+            className="flex-shrink-0"
           >
             <h1
               className="text-2xl sm:text-3xl font-bold leading-tight"
@@ -105,21 +107,29 @@ export default function App() {
             </p>
           </motion.div>
 
+          {/* Right controls */}
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
-            className="flex items-center gap-3"
+            className="flex items-center gap-3 flex-wrap justify-end"
           >
-            <span className="text-xs hidden sm:block" style={{ color: '#444' }}>
+            <span className="text-xs hidden md:block" style={{ color: '#444' }}>
               {collection.length} unique apes
             </span>
+            <div className="h-5 w-px hidden md:block" style={{ background: 'rgba(255,255,255,0.1)' }} />
+
+            {/* Wallet button */}
+            <WalletButton />
+
             <div className="h-5 w-px hidden sm:block" style={{ background: 'rgba(255,255,255,0.1)' }} />
+
+            {/* Mint CTA */}
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setShowMintModal(true)}
-              className="text-sm font-bold px-4 py-2 rounded-lg"
+              className="text-sm font-bold px-4 py-2 rounded-lg hidden sm:block"
               style={{
                 background: 'linear-gradient(135deg,#FFD700,#C0A060)',
                 color: '#000',
@@ -170,6 +180,9 @@ export default function App() {
           {audioMuted ? '🔇' : '🔊'}
         </motion.button>
       </motion.div>
+
+      {/* ── Tx toast notifications ── */}
+      <TxToast />
 
       {/* ── Modals ── */}
       <AnimatePresence>

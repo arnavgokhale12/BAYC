@@ -1,19 +1,24 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
+import { useAccount } from 'wagmi';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 import AvatarCanvas from './AvatarCanvas';
 import { TRAIT_CATEGORIES, RARITIES } from './traitData';
 import { mintAvatar } from './AvatarGenerator';
 import { sfxSlotTick, sfxSlotLock, sfxCoinChime, sfxThud } from './AudioEngine';
+import { showMintToast } from './TxToast';
 
-const SPIN_DURATION = 1200; // ms per slot
-const SPIN_TICK_INTERVAL = 60; // ms between ticks while spinning
+const SPIN_DURATION     = 1200; // ms each slot spins
+const SPIN_TICK_MS      = 60;   // ms between display-ticks while spinning
 
 export default function MintModal({ ownedCount, onMinted, onClose }) {
-  const [phase, setPhase] = useState('idle'); // idle | spinning | done
+  const { isConnected } = useAccount();
+
+  const [phase, setPhase]               = useState('idle'); // idle | spinning | done
   const [lockedTraits, setLockedTraits] = useState({});
   const [spinningSlot, setSpinningSlot] = useState(null);
-  const [spinDisplay, setSpinDisplay] = useState({});
+  const [spinDisplay, setSpinDisplay]   = useState({});
   const [mintedAvatar, setMintedAvatar] = useState(null);
   const tickRef = useRef(null);
 
@@ -30,15 +35,15 @@ export default function MintModal({ ownedCount, onMinted, onClose }) {
     setLockedTraits({});
     setPhase('spinning');
 
-    const categories = TRAIT_CATEGORIES;
     let catIndex = 0;
 
     function spinNext() {
-      if (catIndex >= categories.length) {
-        // All done
+      if (catIndex >= TRAIT_CATEGORIES.length) {
         setSpinningSlot(null);
         setPhase('done');
         sfxCoinChime();
+        // Show fake tx toast
+        showMintToast();
         setTimeout(() => {
           confetti({
             particleCount: 180,
@@ -50,18 +55,15 @@ export default function MintModal({ ownedCount, onMinted, onClose }) {
         }, 200);
         return;
       }
-      const cat = categories[catIndex];
+      const cat = TRAIT_CATEGORIES[catIndex];
       setSpinningSlot(cat.key);
 
-      // Rapid-cycle through random traits for this slot
       tickRef.current = setInterval(() => {
-        const randomTraits = cat.traits;
-        const randomTrait = randomTraits[Math.floor(Math.random() * randomTraits.length)];
+        const rand = cat.traits[Math.floor(Math.random() * cat.traits.length)];
         sfxSlotTick();
-        setSpinDisplay(prev => ({ ...prev, [cat.key]: randomTrait }));
-      }, SPIN_TICK_INTERVAL);
+        setSpinDisplay(prev => ({ ...prev, [cat.key]: rand }));
+      }, SPIN_TICK_MS);
 
-      // Lock in after SPIN_DURATION
       setTimeout(() => {
         clearInterval(tickRef.current);
         const finalTrait = avatar.traits[cat.key];
@@ -78,10 +80,7 @@ export default function MintModal({ ownedCount, onMinted, onClose }) {
   }, [ownedCount]);
 
   const handleConfirm = useCallback(() => {
-    if (mintedAvatar) {
-      onMinted(mintedAvatar);
-      onClose();
-    }
+    if (mintedAvatar) { onMinted(mintedAvatar); onClose(); }
   }, [mintedAvatar, onMinted, onClose]);
 
   return (
@@ -112,17 +111,12 @@ export default function MintModal({ ownedCount, onMinted, onClose }) {
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
-          <div
-            className="px-6 pt-6 pb-4 text-center"
-            style={{ borderBottom: '1px solid rgba(255,215,0,0.1)' }}
-          >
+          <div className="px-6 pt-6 pb-4 text-center" style={{ borderBottom: '1px solid rgba(255,215,0,0.1)' }}>
             <button
               onClick={onClose}
               className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-lg"
               style={{ background: 'rgba(255,255,255,0.08)', color: '#fff' }}
-            >
-              ×
-            </button>
+            >×</button>
             <div className="text-3xl mb-1">🎰</div>
             <h2
               className="text-xl font-bold"
@@ -137,99 +131,130 @@ export default function MintModal({ ownedCount, onMinted, onClose }) {
             </p>
           </div>
 
-          {/* Slot machine */}
-          <div className="p-6 space-y-2">
-            {TRAIT_CATEGORIES.map(cat => (
-              <SlotRow
-                key={cat.key}
-                category={cat}
-                spinning={spinningSlot === cat.key}
-                locked={!!lockedTraits[cat.key]}
-                displayTrait={spinDisplay[cat.key] || lockedTraits[cat.key]}
-              />
-            ))}
-          </div>
-
-          {/* Result avatar */}
-          <AnimatePresence>
-            {phase === 'done' && mintedAvatar && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-                className="px-6 pb-4 flex justify-center"
-              >
-                <div
-                  className="rounded-2xl overflow-hidden"
-                  style={{
-                    border: '2px solid #FFD700',
-                    boxShadow: '0 0 40px rgba(255,215,0,0.35)',
-                  }}
-                >
-                  <AvatarCanvas traits={mintedAvatar.traits} size={200} className="block" />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Actions */}
-          <div className="px-6 pb-6 space-y-3">
-            {phase === 'idle' && (
-              <motion.button
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={startMint}
-                className="w-full py-3.5 rounded-xl font-bold text-base"
-                style={{
-                  background: 'linear-gradient(135deg, #FFD700, #C0A060)',
-                  color: '#000',
-                  fontFamily: "'Space Grotesk',sans-serif",
-                  boxShadow: '0 4px 20px rgba(255,215,0,0.4)',
-                }}
-              >
-                🎲 Spin & Mint
-              </motion.button>
-            )}
-            {phase === 'spinning' && (
-              <div
-                className="w-full py-3.5 rounded-xl text-center font-bold text-base"
-                style={{
-                  background: 'rgba(255,215,0,0.08)',
-                  border: '1px solid rgba(255,215,0,0.2)',
-                  color: '#888',
-                  fontFamily: "'Space Grotesk',sans-serif",
-                }}
-              >
-                ⏳ Spinning...
+          {/* ── Wallet gate ── */}
+          {!isConnected && phase === 'idle' ? (
+            <WalletGate />
+          ) : (
+            <>
+              {/* Slot machine */}
+              <div className="p-6 space-y-2">
+                {TRAIT_CATEGORIES.map(cat => (
+                  <SlotRow
+                    key={cat.key}
+                    category={cat}
+                    spinning={spinningSlot === cat.key}
+                    locked={!!lockedTraits[cat.key]}
+                    displayTrait={spinDisplay[cat.key] || lockedTraits[cat.key]}
+                  />
+                ))}
               </div>
-            )}
-            {phase === 'done' && (
-              <motion.button
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={handleConfirm}
-                className="w-full py-3.5 rounded-xl font-bold text-base"
-                style={{
-                  background: 'linear-gradient(135deg, #FFD700, #C0A060)',
-                  color: '#000',
-                  fontFamily: "'Space Grotesk',sans-serif",
-                  boxShadow: '0 4px 20px rgba(255,215,0,0.4)',
-                }}
-              >
-                ✓ Add to My Collection
-              </motion.button>
-            )}
-          </div>
+
+              {/* Result avatar */}
+              <AnimatePresence>
+                {phase === 'done' && mintedAvatar && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+                    className="px-6 pb-4 flex justify-center"
+                  >
+                    <div
+                      className="rounded-2xl overflow-hidden"
+                      style={{
+                        border: '2px solid #FFD700',
+                        boxShadow: '0 0 40px rgba(255,215,0,0.35)',
+                      }}
+                    >
+                      <AvatarCanvas traits={mintedAvatar.traits} size={200} className="block" />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Actions */}
+              <div className="px-6 pb-6 space-y-3">
+                {phase === 'idle' && (
+                  <motion.button
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={startMint}
+                    className="w-full py-3.5 rounded-xl font-bold text-base"
+                    style={{
+                      background: 'linear-gradient(135deg,#FFD700,#C0A060)',
+                      color: '#000',
+                      fontFamily: "'Space Grotesk',sans-serif",
+                      boxShadow: '0 4px 20px rgba(255,215,0,0.4)',
+                    }}
+                  >
+                    🎲 Spin & Mint
+                  </motion.button>
+                )}
+                {phase === 'spinning' && (
+                  <div
+                    className="w-full py-3.5 rounded-xl text-center font-bold text-base"
+                    style={{
+                      background: 'rgba(255,215,0,0.08)',
+                      border: '1px solid rgba(255,215,0,0.2)',
+                      color: '#888',
+                      fontFamily: "'Space Grotesk',sans-serif",
+                    }}
+                  >
+                    ⏳ Spinning...
+                  </div>
+                )}
+                {phase === 'done' && (
+                  <motion.button
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={handleConfirm}
+                    className="w-full py-3.5 rounded-xl font-bold text-base"
+                    style={{
+                      background: 'linear-gradient(135deg,#FFD700,#C0A060)',
+                      color: '#000',
+                      fontFamily: "'Space Grotesk',sans-serif",
+                      boxShadow: '0 4px 20px rgba(255,215,0,0.4)',
+                    }}
+                  >
+                    ✓ Add to My Collection
+                  </motion.button>
+                )}
+              </div>
+            </>
+          )}
         </motion.div>
       </motion.div>
     </AnimatePresence>
   );
 }
 
+// ── Wallet gate shown when user isn't connected ────────────────────────────
+function WalletGate() {
+  return (
+    <div className="px-6 py-10 flex flex-col items-center gap-5 text-center">
+      <div className="text-5xl">🔐</div>
+      <div>
+        <h3
+          className="text-lg font-bold mb-1"
+          style={{ fontFamily: "'Space Grotesk',sans-serif", color: '#fff' }}
+        >
+          Connect your wallet to mint
+        </h3>
+        <p className="text-sm" style={{ color: '#666' }}>
+          Your minted ape is saved locally — connecting your wallet lets you verify
+          ownership and view on OpenSea.
+        </p>
+      </div>
+      {/* RainbowKit's ConnectButton — opens the modal */}
+      <ConnectButton />
+    </div>
+  );
+}
+
+// ── Individual slot row ────────────────────────────────────────────────────
 function SlotRow({ category, spinning, locked, displayTrait }) {
-  const rarity = displayTrait?.rarity || 'Common';
+  const rarity      = displayTrait?.rarity || 'Common';
   const rarityColor = RARITIES[rarity]?.color || '#888';
 
   return (
@@ -245,23 +270,18 @@ function SlotRow({ category, spinning, locked, displayTrait }) {
         transition: 'border-color 0.2s ease',
       }}
     >
-      {/* Category label */}
-      <div
-        className="text-xs font-medium w-20 flex-shrink-0 uppercase tracking-wider"
-        style={{ color: '#555' }}
-      >
+      <div className="text-xs font-medium w-20 flex-shrink-0 uppercase tracking-wider" style={{ color: '#555' }}>
         {category.label}
       </div>
 
-      {/* Spinning reel */}
       <div className="flex-1 h-8 overflow-hidden relative flex items-center">
         <AnimatePresence mode="wait">
           {spinning ? (
             <motion.div
               key={displayTrait?.id || 'spin'}
               initial={{ y: -20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 20, opacity: 0 }}
+              animate={{ y: 0,   opacity: 1 }}
+              exit={{   y: 20,  opacity: 0 }}
               transition={{ duration: 0.05 }}
               className="text-sm font-semibold"
               style={{ color: '#FFD700' }}
@@ -272,7 +292,7 @@ function SlotRow({ category, spinning, locked, displayTrait }) {
             <motion.div
               key="locked"
               initial={{ scale: 1.3, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
+              animate={{ scale: 1,   opacity: 1 }}
               transition={{ type: 'spring', stiffness: 500, damping: 20 }}
               className="text-sm font-semibold slot-flash"
               style={{ color: rarityColor }}
@@ -285,7 +305,6 @@ function SlotRow({ category, spinning, locked, displayTrait }) {
         </AnimatePresence>
       </div>
 
-      {/* Rarity indicator */}
       <div className="flex-shrink-0 w-20 text-right">
         {locked && displayTrait && (
           <motion.span
@@ -302,12 +321,9 @@ function SlotRow({ category, spinning, locked, displayTrait }) {
             {rarity}
           </motion.span>
         )}
-        {spinning && (
-          <span className="text-xs" style={{ color: '#FFD700', opacity: 0.7 }}>▶▶▶</span>
-        )}
+        {spinning && <span className="text-xs" style={{ color: '#FFD700', opacity: 0.7 }}>▶▶▶</span>}
       </div>
 
-      {/* Lock icon */}
       <div className="w-4 flex-shrink-0">
         {locked && (
           <motion.span
